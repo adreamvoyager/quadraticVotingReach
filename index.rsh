@@ -46,8 +46,8 @@ export const main = Reach.App(() => {
         //seeOutcome : Fun([], UInt),
         //getProposal : Fun([], Tuple(Bytes(256), Bytes(256), Bytes(256), Bytes(256))),
  //       invite : Fun([UInt], Null), //Whitelist an address for voting
-        showResults : Fun([UInt, UInt, UInt], Null), //Output the vote count of the three proposals
-        sendProposal : Fun([ Tuple( Bytes(256), Bytes(256), Bytes(256), Bytes(256) )], Null),
+        //showResults : Fun([UInt, UInt, UInt], Null), //Output the vote count of the three proposals
+        //sendProposal : Fun([ Tuple( Bytes(256), Bytes(256), Bytes(256), Bytes(256) )], Null),
     });
 
     const Info = View('Info', {
