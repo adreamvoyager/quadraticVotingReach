@@ -43,18 +43,18 @@ export const main = Reach.App(() => {
     {
 
         vote : Fun([UInt, UInt, UInt], Null),
-        seeOutcome : Fun([], Null),
-        getProposal : Fun([], Null),
+        //seeOutcome : Fun([], UInt),
+        //getProposal : Fun([], Tuple(Bytes(256), Bytes(256), Bytes(256), Bytes(256))),
  //       invite : Fun([UInt], Null), //Whitelist an address for voting
         showResults : Fun([UInt, UInt, UInt], Null), //Output the vote count of the three proposals
-        sendProposal : Fun([Bytes(256), Bytes(256), Bytes(256), Bytes(256)])
+        sendProposal : Fun([ Tuple( Bytes(256), Bytes(256), Bytes(256), Bytes(256) )], Null),
     });
 
     const Info = View('Info', {
 
         proposal: Tuple(Bytes(256), Bytes(256), Bytes(256), Bytes(256)),
         voteTotals: Tuple( UInt, UInt, UInt),
-        
+        pollOpen: Bool,
     });
 
     init();
@@ -73,50 +73,52 @@ export const main = Reach.App(() => {
     Proposer.publish(Proposal, ChoiceA, ChoiceB, ChoiceC);
 
     Info.proposal.set([Proposal, ChoiceA, ChoiceB, ChoiceC]);
+    Info.pollOpen.set(false);
+    Info.voteTotals.set([0,0,0]);
 
     const vMap = new Map(Bool);
-    const [pollOpen, votesA, votesB, votesC, voterCount] = parallelReduce([true,0,0,0,0])
-        .define(() => {Info.voteTotals.set([votesA, votesB, votesC])})
+    const [pollOpen, contractClose, votesA, votesB, votesC, voterCount] = parallelReduce([true, false, 0,0,0,0])
+        .define(() => {
+            Info.voteTotals.set([votesA, votesB, votesC]);
+            Info.pollOpen.set(pollOpen);
+        })
         .invariant(vMap.size() <= voterCount, "Voter Count is wrong") //use Map.sum() to add up all UInts in a map
-        .while(pollOpen)        
+        .while(pollOpen && !contractClose)
+        /*.api_(Voter.getProposal, () => {
+            check (this == Proposer, "You are not the proposer");
+            return[0, (ret) => {                
+                ret(Info.proposal);
+                return [false, votesA, votesB, votesC, voterCount];
+            }];
+        })        */
         .api_(AdminAP.closePoll, () => {
             check (this == Proposer, "You are not the proposer");
             return[0, (ret) => {
                 
                 ret(null);
-                return [false, votesA, votesB, votesC, voterCount];
+                return [false, contractClose, votesA, votesB, votesC, voterCount];
+            }];
+        })
+        .api_(AdminAP.endContract, () => {
+            check (this == Proposer, "You are not the proposer");
+            return[0, (ret) => {
+                
+                ret(null);
+                return [false, true, votesA, votesB, votesC, voterCount];
             }];
         })
         .api_(Voter.vote, (vA, vB, vC) => {
             check(isNone(vMap[this]), "Sorry, you have already voted. Come again later to see the results.");
+            check(pollOpen, "The poll is closed and is no longer accepting votes.");
             return[getCost(vA, vB, vC), (ret) => {
                 vMap[this] = true;
                 ret(null);
-                return [true, votesA + vA, votesB + vB, votesC + vC, voterCount + 1];
+                return [pollOpen, contractClose, votesA + vA, votesB + vB, votesC + vC, voterCount + 1];
             }];
         });
         
-        commit();
-
-        const [contractClosed] = parallelReduce([false])
-            .while(!contractClosed)
-            .api_(AdminAP.endContract, () => {
-                check (this == Proposer, "You are not the proposer");
-                return[0, (ret) => {
-                    
-                    ret(null);
-                    return [true];
-                }];
-            })
-            .api_(Voter.seeOutcome, () => {
-                check(isNone(vMap[this]), "Sorry, you have already voted. Come again later to see the results.");
-                return[0, (ret) => {
-                    
-                    ret(null);
-                    return [false];
-                }];
-            });
-
+     
+        
         transfer(balance()).to(Proposer);
         commit();
         exit();
