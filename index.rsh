@@ -1,12 +1,12 @@
 'reach 0.1';
-
+/*
 const ProposalBlock = Object({
     proposal: Bytes(256),
     optionA: Bytes(256),
     optionB: Bytes(256),
     optionC: Bytes(256),
 })
-
+*/
 const getCost = function(votesA, votesB, votesC)
 {
     const costA = votesA * votesA;
@@ -19,11 +19,12 @@ const getCost = function(votesA, votesB, votesC)
 
 
 export const main = Reach.App(() => {
+    
     const Proposer = Participant('Proposer', {
 
         pollTime : UInt, //How long until the results are revealed         
         //proposal : [Bytes(256), Bytes(256), Bytes(256), Bytes(256)], //Set the test and 3 proposal options
-        launchPoll: Fun([], Tuple(Bytes(256), Bytes(256), Bytes(256), Bytes(256))),
+        launchPoll: Fun([], Tuple(Bytes(100), Bytes(100), Bytes(100), Bytes(100))),
         
         
         closePoll : Fun([Bool], Null), // Close out the contract
@@ -43,21 +44,27 @@ export const main = Reach.App(() => {
     {
 
         vote : Fun([UInt, UInt, UInt], Null),
-        //seeOutcome : Fun([], UInt),
-        //getProposal : Fun([], Tuple(Bytes(256), Bytes(256), Bytes(256), Bytes(256))),
- //       invite : Fun([UInt], Null), //Whitelist an address for voting
-        //showResults : Fun([UInt, UInt, UInt], Null), //Output the vote count of the three proposals
-        //sendProposal : Fun([ Tuple( Bytes(256), Bytes(256), Bytes(256), Bytes(256) )], Null),
+       
     });
 
     const Info = View('Info', {
 
-        proposal: Tuple(Bytes(256), Bytes(256), Bytes(256), Bytes(256)),
+        creatorAddress : Address,
+        proposal: Tuple(Bytes(100), Bytes(100), Bytes(100), Bytes(100)),
         voteTotals: Tuple( UInt, UInt, UInt),
         pollOpen: Bool,
     });
 
     init();
+    Proposer.only(()=>
+    {
+       const pollState = true;
+    });
+
+    
+    Proposer.publish(pollState);            
+    Info.pollOpen.set(pollState);  
+    commit();
 
 
     Proposer.only(() => {
@@ -71,9 +78,9 @@ export const main = Reach.App(() => {
 
     
     Proposer.publish(Proposal, ChoiceA, ChoiceB, ChoiceC);
-
     Info.proposal.set([Proposal, ChoiceA, ChoiceB, ChoiceC]);
-    Info.pollOpen.set(false);
+    //Info.proposal.set([Proposal, ChoiceA, ChoiceB, ChoiceC]);
+    
     Info.voteTotals.set([0,0,0]);
 
     const vMap = new Map(Bool);
@@ -83,7 +90,7 @@ export const main = Reach.App(() => {
             Info.pollOpen.set(pollOpen);
         })
         .invariant(vMap.size() <= voterCount, "Voter Count is wrong") //use Map.sum() to add up all UInts in a map
-        .while(pollOpen && !contractClose)
+        .while(contractClose == false)
         /*.api_(Voter.getProposal, () => {
             check (this == Proposer, "You are not the proposer");
             return[0, (ret) => {                
@@ -92,15 +99,18 @@ export const main = Reach.App(() => {
             }];
         })        */
         .api_(AdminAP.closePoll, () => {
-            check (this == Proposer, "You are not the proposer");
+            //Uncoment next line for final build
+            //check (this == Proposer, "You are not the proposer");
+            
             return[0, (ret) => {
                 
                 ret(null);
-                return [false, contractClose, votesA, votesB, votesC, voterCount];
+                return [false, false, votesA, votesB, votesC, voterCount];
             }];
         })
         .api_(AdminAP.endContract, () => {
-            check (this == Proposer, "You are not the proposer");
+            //Uncomment below line for final
+            //check (this == Proposer, "You are not the proposer");
             return[0, (ret) => {
                 
                 ret(null);

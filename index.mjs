@@ -4,13 +4,20 @@ const stdlib = loadStdlib();
 
 const startingBalance = stdlib.parseCurrency(1000);
 
+const ROLE = ['Proposer', 'Admin', 'Voter' ];
 
-const isVoter = await ask.ask(
-    'Are you a voter?',
+const isAttaching = await ask.ask(
+    'Are you attaching to an existing contract?',
     ask.yesno
 );
 
-const who = isVoter ? 'Voter' : 'Proposer';
+
+
+let role = null;
+if (!isAttaching)
+{
+    role = ROLE[0];
+}
 let account = null;
 
 const createAcc = await ask.ask(
@@ -36,7 +43,7 @@ else
 }
 
 let contract = null;
-if (!isVoter)
+if (role == 'Proposer')
 {
     contract = account.contract(backend);
     contract.getInfo().then((info) => {
@@ -50,44 +57,151 @@ else
         JSON.parse
     );
     contract = account.contract(backend, info);
-}
+    //add check is account is Proposer here
 
+    //find out if the attacher is an admin. The final version will check if the address matches the
+    //proposer
+    const isAdmin = await ask.ask( 
+        'Are you an admin?',
+        ask.yesno
+    );
+    if (isAdmin)
+        role=ROLE[1];
+    else
+        role=ROLE[2]; //set role to voter
+}
 const fmt = (x) => stdlib.formatCurrency(x, 4);
 const getBalance = async () => fmt(await stdlib.balanceOf(account));
 const before = await getBalance();
 console.log(`Your balance is ${before}`);
 const interact = {...stdlib.hasRandom };
 
-await launchPoll()
+//This freezes the program
+//const pollOpen = await contract.v.Info.pollOpen();
+//console.log(pollOpen);
+if (role == 'Proposer') /*&& pollOpen)*/
 {
-    const proposal = await ask.ask(
-        `What is the proposal?`,
-        (x => x)
-    );
-    const OptionA = await ask.ask(
-        `What is the first option?`,
-        (x => x)
-    );
-    const OptionB = await ask.ask(
-        `What is the second option?`,
-        (x => x)
-    );
-    const OptionC = await ask.ask(
-        `What is the third option?`,
-        (x => x)
+    
+    interact.launchPoll = async () => 
+    {
+        const proposal = await ask.ask(
+            `What is the proposal?`,
+            (x => x)
+        );
+        const OptionA = await ask.ask(
+            `What is the first option?`,
+            (x => x)
+        );
+        const OptionB = await ask.ask(
+            `What is the second option?`,
+            (x => x)
+        );
+        const OptionC = await ask.ask(
+            `What is the third option?`,
+            (x => x)
 
-        
+            
 
-    );
-    console.log("Transferring proposals to contract");
-    //interact.proposal = proposal;
-    //interact.OptionA = OptionA;
-    //interact.OptionB = OptionB;
-    //interact.OptionC = OptionC;
-    return {proposal, OptionA, OptionB, OptionC};
-    //console.log("transfer complete");
-    //interact.pollClosed = false;
+        );
+        role = 'Admin';
+        //This works
+        //const pollOpen = await contract.v.Info.pollOpen();
+        //console.log(pollOpen);
+        console.log("Transferring proposals to contract");        
+        return [proposal, OptionA, OptionB, OptionC];
+       
+    }
+
+
 }
+else if (role == 'Admin')
+{
+    console.log("you are an admin");
+
+    const pollIsOpen = await contract.v.Info.pollOpen();
+
+    if (pollIsOpen[1])
+    {
+        const pollClosed = await ask.ask(
+            "Would you like to close the poll?",
+            ask.yesno
+        );
+
+        if (pollClosed)
+        {
+            await contract.apis.AdminAP.closePoll();
+        }
+    }
+    else
+    {
+        const contractClosed = await ask.ask(
+            "Would you like to close the contract?",
+            ask.yesno
+        );
+
+        if (contractClosed)
+        {
+            await contract.apis.AdminAP.endContract();
+        } 
+    }
+}
+else if (role == 'Voter')
+{
+    console.log("You are a voter");
+
+    const pollIsOpen = await contract.v.Info.pollOpen();
+
+    
+
+    if (!pollIsOpen[1])
+    {
+        const voteCount = await contract.v.Info.voteTotals();
+        console.log("The vote count is: " + voteCount);
+    }
+    else
+    {
+
+       
+        const pollInfo = await contract.v.Info.proposal();
+        
+        let pInfo = String(pollInfo[1]).split(',');
+        
+        console.log("\n\nThe proposal is: \n");
+        console.log(pInfo[0] + "\n");
+        console.log("A: " + pInfo[1]);
+        console.log("B: " + pInfo[2]);
+        console.log("C: " + pInfo[3]);
+        
+        const Vote = await ask.ask(
+            `Which option do you vote for?`,
+            (x => x)
+
+            
+
+        );
+        switch (Vote)
+        {
+            case "A":
+                await contract.apis.Voter.vote(1, 0, 0);
+                break;
+            case "B":
+                await contract.apis.Voter.vote(0, 1, 0);
+                break;
+            case "C":
+                await contract.apis.Voter.vote(0, 0, 1);
+                break;
+        }
+    }
+    
+}
+else
+{
+    console.log(role);
+    console.log("we don't know what you are.");
+}
+console.log("lower code starts here");
+
+
 
 /*
 }
@@ -124,8 +238,10 @@ else
     }
 }
 */
-const part = isVoter ? contract.p.Voter : contract.p.Proposer;
-part(interact);
+console.log("determining part");
+const part = (role == 'Proposer') ? contract.p.Proposer : contract.apis.Voter;
+console.log(part);
+await part(interact);
 
 ask.done(); 
 //await Promise.all([
