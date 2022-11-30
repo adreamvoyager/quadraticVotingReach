@@ -7,15 +7,27 @@ const ProposalBlock = Object({
     optionC: Bytes(256),
 })
 */
+
+//this is to make sure votes are not submitted as a decimal
+const roundNumber = function(number)
+{
+    return number - (number % 1)
+}
+
 const getCost = function(votesA, votesB, votesC)
 {
-    const costA = votesA * votesA;
-    const costB = votesB * votesB;
-    const costC = votesC * votesC;
+    const aR = roundNumber(votesA);
+    const bR = roundNumber(votesB);
+    const cR = roundNumber(votesC);
+
+    const costA = aR * aR;
+    const costB = bR * bR;
+    const costC = cR * cR;
     
     return costA + costB + costC;    
 
 }
+
 
 
 export const main = Reach.App(() => {
@@ -44,7 +56,8 @@ export const main = Reach.App(() => {
     {
 
         vote : Fun([UInt, UInt, UInt], Null),
-       
+        checkIfVoted : Fun([], Bool),
+        checkIfAdmin : Fun([], Bool),
     });
 
     const Info = View('Info', {
@@ -56,15 +69,8 @@ export const main = Reach.App(() => {
     });
 
     init();
-    Proposer.only(()=>
-    {
-       const pollState = true;
-    });
-
+              
     
-    Proposer.publish(pollState);            
-    Info.pollOpen.set(pollState);  
-    commit();
 
 
     Proposer.only(() => {
@@ -79,8 +85,8 @@ export const main = Reach.App(() => {
     
     Proposer.publish(Proposal, ChoiceA, ChoiceB, ChoiceC);
     Info.proposal.set([Proposal, ChoiceA, ChoiceB, ChoiceC]);
-    //Info.proposal.set([Proposal, ChoiceA, ChoiceB, ChoiceC]);
-    
+    Info.pollOpen.set(true);  
+            
     Info.voteTotals.set([0,0,0]);
 
     const vMap = new Map(Bool);
@@ -100,7 +106,7 @@ export const main = Reach.App(() => {
         })        */
         .api_(AdminAP.closePoll, () => {
             //Uncoment next line for final build
-            //check (this == Proposer, "You are not the proposer");
+            check (this == Proposer, "You are not the proposer");
             
             return[0, (ret) => {
                 
@@ -110,7 +116,7 @@ export const main = Reach.App(() => {
         })
         .api_(AdminAP.endContract, () => {
             //Uncomment below line for final
-            //check (this == Proposer, "You are not the proposer");
+            check (this == Proposer, "You are not the proposer");
             return[0, (ret) => {
                 
                 ret(null);
@@ -123,15 +129,28 @@ export const main = Reach.App(() => {
             return[getCost(vA, vB, vC), (ret) => {
                 vMap[this] = true;
                 ret(null);
-                return [pollOpen, contractClose, votesA + vA, votesB + vB, votesC + vC, voterCount + 1];
+                return [pollOpen, contractClose,  
+                    votesA + roundNumber(vA), votesB + roundNumber(vB), votesC + roundNumber(vC), voterCount + 1];
+            }];
+        })
+        .api_(Voter.checkIfAdmin, () => {            
+            return[0, (ret) => {
+                
+                ret(Proposer == this);
+                return [pollOpen, contractClose, votesA, votesB, votesC, voterCount];
+            }];
+        })
+        .api_(Voter.checkIfVoted, () => {            
+            return[0, (ret) => {
+                
+                ret(!isNone(vMap[this]));
+                return [pollOpen, contractClose, votesA, votesB, votesC, voterCount];
             }];
         });
         
-     
-        
         transfer(balance()).to(Proposer);
         commit();
-        exit();
+        
+    exit();
 
     });
-   
